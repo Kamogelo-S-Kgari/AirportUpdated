@@ -9,10 +9,15 @@ import android.graphics.Color;
 import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationManager;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
 import android.util.Log;
+import android.view.View;
+import android.widget.ArrayAdapter;
+import android.widget.Button;
+import android.widget.Spinner;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -43,7 +48,19 @@ import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.gson.JsonParser;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.HashMap;
 import java.util.List;
 
 import retrofit2.Call;
@@ -59,15 +76,32 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     Marker mCurrLocationMarker;
     private GoogleApiClient mGoogleApiClient;
     FusedLocationProviderClient mFusedLocationClient;
+    Spinner spType;
+    Button btn_Locate;
 
     PlaceAutocompleteFragment placeAutoComplete;
+    String [] aiport = {"airport"};
+    //Initialize array pf place name
+    String [] aiportname = {"Airport"};
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        //Assign Variable
+        spType = findViewById(R.id.sptype);
+        btn_Locate = findViewById(R.id.bt_locate);
+        //Initialize array pf place type
+
+
+
+        //Set adapter on spinner
+
+        spType.setAdapter(new ArrayAdapter<>(MainActivity.this,android.R.layout.simple_spinner_dropdown_item,aiportname));
         mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+
+
 
         mapFrag = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.google_map);
         mapFrag.getMapAsync(this);
@@ -82,6 +116,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 mGoogleMap.addMarker(new MarkerOptions().position(place.getLatLng()).title(place.getName().toString()));
                 mGoogleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(place.getLatLng(), 14));
             }
+
 
             @Override
             public void onError(Status status) {
@@ -217,6 +252,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         }
     }
+
+
     private void getLocation() {
         LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         Criteria criteria = new Criteria();
@@ -226,9 +263,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             ActivityCompat.requestPermissions(this, new String[] {Manifest.permission.ACCESS_FINE_LOCATION}, 1000);
             return;
         }
+
         mLastLocation = locationManager.getLastKnownLocation(locationManager.getBestProvider(criteria, false));
-        double lng = mLastLocation.getLongitude();
-        double lat = mLastLocation.getLatitude();
+        final double lng = mLastLocation.getLongitude();
+        final double lat = mLastLocation.getLatitude();
         String slng = Double.toString(lng);
         String slat = Double.toString(lat);
         String location = slat + ","+ slng;
@@ -271,7 +309,21 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 else {
                     Toast.makeText(getApplicationContext(), "failed to retrieve airport data", Toast.LENGTH_SHORT).show();
                 }
+                btn_Locate.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        int i = spType.getSelectedItemPosition();
+
+                        String url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json" + "?location=" + lat + "," + lng + "&radius=5000" + "&type=" + aiport[i] + "&sensor=true" + "&key=" + getResources().getString(R.string.google_map_key);
+
+                        new AirportTask().execute(url);
+
+                    }
+                });
+
+
             }
+
 
             @Override
             public void onFailure(@NonNull Call<Details> call, @NonNull Throwable t) {
@@ -282,4 +334,107 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         });
     }
 
+    private class AirportTask extends AsyncTask<String,Integer,String> {
+        @Override
+        protected String doInBackground(String... strings) {
+            String data = null;
+            try {
+                 data = downloadUrl(strings[0]);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return data;
+        }
+
+        @Override
+        protected void onPostExecute(String s) {
+            new portTask().execute(s);
+        }
+    }
+
+    private String downloadUrl(String string) throws IOException {
+
+        URL url = new URL(string);
+
+        HttpURLConnection connection = (HttpURLConnection)url.openConnection();
+
+        connection.connect();
+        InputStream stream = connection.getInputStream();
+
+        BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
+
+        StringBuilder builder = new StringBuilder();
+
+        String line = "";
+        while ((line = reader.readLine()) != null) {
+        builder.append(line);
+        }
+
+        String data = builder.toString();
+
+        reader.close();
+
+        return data;
+
+    }
+
+    private class portTask extends AsyncTask<String,Integer,List<HashMap<String,String>>> {
+
+
+        @Override
+        protected List<HashMap<String, String>> doInBackground(String... strings) {
+            JsonParser jsonParser = new JsonParser();
+
+            List<HashMap<String,String>>mapList= null;
+            JSONObject object = null;
+            try {
+                object = new JSONObject(strings[0]);
+
+                mapList = parseResults(object);
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+            return mapList;
+        }
+        public List<HashMap<String,String>> parseResults(JSONObject object)
+        {
+            JsonParser jsonParser = new JsonParser();
+            JSONArray jsonArray = null;
+
+            try {
+                jsonArray = object.getJSONArray("results");
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+
+            return (List<HashMap<String, String>>) jsonArray;
+        }
+
+        @Override
+        protected void onPostExecute(List<HashMap<String, String>> hashMaps) {
+            mGoogleMap.clear();
+
+            for(int i = 0 ; i<hashMaps.size();i++)
+            {
+                HashMap<String,String> hashMapList = hashMaps.get(i);
+            double lat = Double.parseDouble(hashMapList.get("lat"));
+                double lng = Double.parseDouble(hashMapList.get("lng"));
+
+                String name = hashMapList.get("name");
+                LatLng latlng = new LatLng(lat,lng);
+
+                MarkerOptions options = new MarkerOptions();
+                options.position(latlng);
+                options.title(name);
+
+                mGoogleMap.addMarker(options);
+
+
+
+
+            }
+        }
+    }
 }
+
+

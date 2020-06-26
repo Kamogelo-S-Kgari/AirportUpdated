@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">Airport</string>
     <string name="map_key" translatable="false">AIzaSyAYgYCoJzUZNc4dI0FVUtS3cX4VjRuoW0A</string>
+    <string name="google_map_key">AIzaSyAYgYCoJzUZNc4dI0FVUtS3cX4VjRuoW0A</string>
 </resources>
